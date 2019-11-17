@@ -1,0 +1,170 @@
+---
+title: "Miss Congeniality"
+output: html_document
+---
+<div style='text-align:justify'>
+
+NAME: ***Davide Croce,Simone Moreschi,Simone Trombettoni***
+
+NICKNAME: ***d.croce1, s.moreschi, s.trombettoni*** 
+
+TEAM: ***il_Tridente***
+
+### Struttura Competizione
+<div style='text-align:justify'>
+
+1. Identificazione e imputazione NA
+2. Creazione nuova variabile
+3. Performance migliore: Boosting
+
+### References
+<div style='text-align:justify'>
+
+* [AS](http://azzalini.stat.unipd.it/Book-DM/index.html)
+* [ESL](https://web.stanford.edu/~hastie/ElemStatLearn/)
+* [ISLR](http://faculty.marshall.usc.edu/gareth-james/)
+* [r4ds](https://r4ds.had.co.nz/)
+
+```{r startup, include = FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = T, eval=T, message=F, warning=F, error=F, comment=NA, cache=F, R.options=list(width=220))
+```
+### R code to reproduce the last submission:
+
+```{r}
+
+# get the required R packages
+
+library(readr)
+library(glmnet)
+library(rpart)
+library(rpart.plot)
+library(caret)
+
+
+train_ratings_all <- read.csv2("C:/Users/david/Desktop/Netflix data/1 - train_ratings_all.txt",                               sep = "",header = FALSE)
+test_ratings_all <- read.csv2("C:/Users/david/Desktop/Netflix data/2 - test_ratings_all.txt", 
+                              sep = "",header = FALSE)
+train_dates_all <- read.csv2 ("C:/Users/david/Desktop/Netflix data/3 - train_dates_all.txt",
+                             sep = "",header = FALSE)
+test_dates_all <- read.csv2("C:/Users/david/Desktop/Netflix data/4 - test_dates_all.txt", 
+                            sep = "",header = FALSE)
+train_y_rating <- read.csv2("C:/Users/david/Desktop/Netflix data/5 - train_y_rating.txt", 
+                            sep = "",header = FALSE)
+test_y_date <- read.csv2("C:/Users/david/Desktop/Netflix data/6 - test_y_date.txt", 
+                         sep = "",header = FALSE)
+train_y_date <- read.csv2("C:/Users/david/Desktop/Netflix data/7 - train_y_date.txt", 
+                          sep = "",header = FALSE)
+movie_titles <- read.csv2("C:/Users/david/Desktop/Netflix data/8 - movie_titles.txt", 
+                          sep = ",",header = FALSE)
+movie_titles[,2]=as.character(movie_titles[,2])
+
+for (i in 1:ncol(train_ratings_all)) {
+  train_ratings_all[which(train_ratings_all[,i]==0),i]=NA
+}
+for (i in 1:ncol(train_dates_all)) {
+  train_dates_all[which(train_dates_all[,i]==0),i]=NA
+}
+for (i in 1:ncol(test_ratings_all)) {
+  test_ratings_all[which(test_ratings_all[,i]==0),i]=NA
+}
+for (i in 1:ncol(test_dates_all)) {
+  test_dates_all[which(test_dates_all[,i]==0),i]=NA
+}
+
+
+for (i in 1:ncol(train_ratings_all)){
+  names(train_ratings_all)[i]=movie_titles[i,2]
+}
+for (i in 1:ncol(train_dates_all)){
+  names(train_dates_all)[i]=movie_titles[i,2]
+}
+for (i in 1:ncol(test_ratings_all)){
+  names(test_ratings_all)[i]=movie_titles[i,2]
+}
+for (i in 1:ncol(test_dates_all)){
+  names(test_dates_all)[i]=movie_titles[i,2]
+}
+
+names(train_y_date)="y_date"
+names(train_y_rating)="y_rating"
+names(test_y_date)="y_date"
+
+colnames(train_dates_all)=paste0(rep("data_", ncol(train_dates_all)), colnames(train_dates_all))
+colnames(test_dates_all)=paste0(rep("data_", ncol(test_dates_all)), colnames(test_dates_all))
+
+train_dates_all= apply(train_dates_all, 2, function(x) train_y_date$y_date - x )
+
+d_medie= colMeans(train_dates_all, na.rm = T)
+
+train_dates_all= apply(train_dates_all, 2, function(x) ifelse(is.na(x), mean(x, na.rm = T), x))
+
+set.seed(123)
+id=sample(c(1:nrow(train_dates_all)), size = nrow(train_dates_all), replace = F)
+ultimo=round(length(id)*0.7)
+id_train=id[1:ultimo]
+diff_train= train_dates_all[id_train,]
+diff_valid= train_dates_all[-id_train,]
+y_training=train_y_rating$y_rating[id_train]
+y_valid=train_y_rating$y_rating[-id_train]
+
+test_dates_all= apply(test_dates_all, 2, function(x) test_y_date$y_date - x )
+for (j in 1:ncol(test_dates_all)) {
+  test_dates_all[,j]= ifelse(is.na(test_dates_all[,j]), d_medie[j] , test_dates_all[,j] )
+}
+
+set.seed(123)
+id=sample(c(1:nrow(train_ratings_all)), size = nrow(train_ratings_all), replace = F)
+ultimo=round(length(id)*0.7)
+id_train=id[1:ultimo]
+prova_train= train_ratings_all[id_train,]
+prova_train_date= train_dates_all[id_train,]
+prova_valid= train_ratings_all[-id_train,]
+prova_valid_date= train_dates_all[-id_train,]
+y_training=train_y_rating$y_rating[id_train]
+y_valid=train_y_rating$y_rating[-id_train]
+
+medie=matrix(nrow=6, ncol=99)
+for (i in 1:6) {
+  for (j in 1:ncol(prova_train)) {
+    medie[i,j]= ifelse( i==6  ,   mean(subset(y_training, is.na(prova_train[,j])==T))   ,mean(subset(y_training, prova_train[,j]==i)))
+  }
+}
+n=nrow(train_ratings_all)
+m=nrow(test_ratings_all)
+combi_ratings=rbind(train_ratings_all, test_ratings_all)
+for ( i in 1:nrow(combi_ratings)) {
+  for (j in 1:ncol(combi_ratings)) {
+    combi_ratings[i,j]= ifelse( is.na(combi_ratings[i,j])==T ,  medie[6,j] ,  
+                        ifelse( combi_ratings[i,j]==1, medie[1,j], 
+                                ifelse(combi_ratings[i,j]==2, medie [2,j], 
+                                       ifelse(combi_ratings[i,j]==3, medie[3,j],
+                                              ifelse(combi_ratings[i,j]==4, medie[4,j], medie[5,j] )))))
+  }
+}
+
+combi_date= rbind(train_dates_all, test_dates_all)
+combi= cbind(combi_ratings, combi_date)
+train2=combi[1:nrow(train_ratings_all),]
+test2=combi[(nrow(train_ratings_all)+1):(nrow(combi)),]
+prova_train2=train2[id_train,]
+prova_valid2=train2[-id_train,]
+
+
+prova_train2$y_training= y_training
+set.seed(123)
+cv <- trainControl(method = "cv",   number = 10,   classProbs = FALSE,  summaryFunction=defaultSummary)
+grid <- expand.grid(
+  n.trees = c(100),
+  shrinkage = c(0.05),
+  interaction.depth = c(10), 
+  n.minobsinnode = c(10))
+boost <- train(
+  y_training~., prova_train2,
+  method = "gbm",
+  tuneGrid = grid,
+  verbose = FALSE,
+  trControl=cv)
+final.y.boost= predict(boost, newdata = test2)
+# show first 6 predicted values
+head(final.y.boost)
+```
